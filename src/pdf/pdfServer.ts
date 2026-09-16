@@ -20,13 +20,19 @@ import {
   type BeaconPdfColumn,
   type BeaconPdfData,
 } from 'Pages/Lightwell/Beacon/pdf/beaconPdf';
+import {
+  formatCoveragePdfGeneratedAt,
+  type CoveragePdfData,
+  type CoveragePdfSummary,
+} from 'Pages/Lightwell/Coverage/utils/coveragePdf';
 
-import { generateBeaconPdf, closeBrowser, getBrowser } from './pdfRenderer';
+import { generateBeaconPdf, generateCoveragePdf, closeBrowser, getBrowser } from './pdfRenderer';
 import { PF_STYLES_DIR } from './pdfFonts';
 import {
   PDF_SERVER_PORT,
   HANDLER_TIMEOUT_MS,
   MAX_VULNERABILITIES,
+  MAX_COVERAGE_PACKAGES,
   pendingRenders,
 } from './pdfConfig';
 import { registry, pdfDuration, pdfErrors } from './pdfMetrics';
@@ -77,6 +83,55 @@ export async function handleBeaconPdf(req: express.Request, res: express.Respons
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(Buffer.from(pdfBuffer));
+  } catch (err) {
+    pdfErrors.inc({ reason: err instanceof Error ? err.constructor.name : 'unknown' });
+    console.error('PDF generation failed:', err);
+    res.status(500).json({
+      error: 'PDF generation failed',
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+type CoveragePdfRequestBody = {
+  filename?: string;
+  summary?: CoveragePdfSummary;
+  data: CoveragePdfData;
+};
+
+export async function handleCoveragePdf(
+  req: express.Request,
+  res: express.Response,
+): Promise<void> {
+  const { filename, summary, data } = req.body as CoveragePdfRequestBody;
+
+  if (!Array.isArray(data?.packages)) {
+    res.status(400).json({ error: 'data with packages is required' });
+    return;
+  }
+
+  if (data.packages.length > MAX_COVERAGE_PACKAGES) {
+    res.status(400).json({
+      error: `Too many packages (${data.packages.length}). Maximum is ${MAX_COVERAGE_PACKAGES}.`,
+    });
+    return;
+  }
+
+  try {
+    const end = pdfDuration.startTimer();
+    const generatedAt = formatCoveragePdfGeneratedAt();
+    const pdfBuffer = await generateCoveragePdf(data, {
+      filename,
+      summary,
+      includeSummary: true,
+      generatedAt,
+    });
+    end();
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="lightwell-coverage-report.pdf"');
     res.setHeader('Content-Length', pdfBuffer.length);
     res.send(Buffer.from(pdfBuffer));
   } catch (err) {
@@ -157,6 +212,16 @@ app.post('/pdf/beacon', pdfRateLimiter, (req, res) => {
   }, HANDLER_TIMEOUT_MS);
 
   handleBeaconPdf(req, res).finally(() => clearTimeout(timer));
+});
+
+app.post('/pdf/coverage', pdfRateLimiter, (req, res) => {
+  const timer = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'PDF generation timed out' });
+    }
+  }, HANDLER_TIMEOUT_MS);
+
+  handleCoveragePdf(req, res).finally(() => clearTimeout(timer));
 });
 
 export default app;

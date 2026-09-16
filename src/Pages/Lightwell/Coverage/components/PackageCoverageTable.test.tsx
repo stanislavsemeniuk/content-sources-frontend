@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import PackageCoverageTable from './PackageCoverageTable';
+import { usePackageCoverageTable } from '../hooks/usePackageCoverageTable';
 import { useCoverageReportPackagesQuery } from 'services/Lightwell/CoverageReportsQueries';
 import { defaultCoverageReportPackagesItem, ReactQueryTestWrapper } from 'testingHelpers';
 
@@ -10,10 +11,16 @@ jest.mock('services/Lightwell/CoverageReportsQueries', () => ({
   useCoverageReportPackagesQuery: jest.fn(),
 }));
 
+// Wraps the table with the lifted filter/pagination state it now receives as a prop.
+const TableHarness = ({ ecosystems }: { ecosystems: string[] }) => {
+  const tableState = usePackageCoverageTable(ecosystems);
+  return <PackageCoverageTable uuid='test-uuid' ecosystems={ecosystems} tableState={tableState} />;
+};
+
 const renderTable = (ecosystems = ['Java', 'Python', 'npm']) =>
   render(
     <ReactQueryTestWrapper>
-      <PackageCoverageTable uuid='test-uuid' ecosystems={ecosystems} />
+      <TableHarness ecosystems={ecosystems} />
     </ReactQueryTestWrapper>,
   );
 

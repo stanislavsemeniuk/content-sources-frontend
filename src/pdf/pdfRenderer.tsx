@@ -21,6 +21,11 @@ import {
   type BeaconPdfColumn,
   type BeaconPdfData,
 } from 'Pages/Lightwell/Beacon/pdf/beaconPdf';
+import CoveragePdfTemplate from 'Pages/Lightwell/Coverage/pdf/CoveragePdfTemplate';
+import type {
+  CoveragePdfAdditionalData,
+  CoveragePdfData,
+} from 'Pages/Lightwell/Coverage/utils/coveragePdf';
 import { getHeaderAndFooterTemplates } from './pdfHeader';
 import { getFontLinkTag } from './pdfFonts';
 import { LIGHTWELL_LOGOMARK_SVG } from './lightwellLogomark';
@@ -91,9 +96,30 @@ export function renderBeaconPdfHtml(
 </html>`;
 }
 
+export function renderCoveragePdfHtml(
+  data: CoveragePdfData,
+  additionalData: Partial<CoveragePdfAdditionalData>,
+): string {
+  const templateHtml = renderToStaticMarkup(
+    <CoveragePdfTemplate asyncData={{ data }} additionalData={additionalData} />,
+  );
+
+  const fontLink = getFontLinkTag(PDF_STYLES_BASE_URL);
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  ${fontLink}
+  <style>body { margin: 0; padding: 0; }</style>
+</head>
+<body>${templateHtml}</body>
+</html>`;
+}
+
 // Concurrency semaphore: limits simultaneous Puppeteer renders to avoid OOM.
 let activeRenders = 0;
-let waitQueue: Array<() => void> = [];
+const waitQueue: Array<() => void> = [];
 
 function acquireSlot(): Promise<void> {
   if (activeRenders < MAX_CONCURRENT_RENDERS) {
@@ -199,4 +225,16 @@ export async function generateBeaconPdf(
 
   const html = renderBeaconPdfHtml(data, additionalData);
   return printPdf(html, { landscape });
+}
+
+export async function generateCoveragePdf(
+  data: CoveragePdfData,
+  additionalData: Omit<CoveragePdfAdditionalData, 'headerBrand'>,
+): Promise<Uint8Array> {
+  const html = renderCoveragePdfHtml(data, {
+    ...additionalData,
+    headerBrand: 'lightwell',
+  });
+  // Coverage PDFs render four narrow columns and always fit A4 portrait.
+  return printPdf(html, { landscape: false });
 }

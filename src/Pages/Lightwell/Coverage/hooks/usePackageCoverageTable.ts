@@ -75,3 +75,5 @@ export const usePackageCoverageTable = (ecosystems: string[]) => {
     ecosystemFilterOptions,
   };
 };
+
+export type PackageCoverageTableState = ReturnType<typeof usePackageCoverageTable>;

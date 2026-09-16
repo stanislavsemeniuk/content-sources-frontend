@@ -19,7 +19,10 @@ import {
   MOCK_COVERAGE_PACKAGES_QUERY_KEY,
 } from 'Pages/Lightwell/mockCoveragePackages';
 import { useCoverageReportPackagesQuery } from 'services/Lightwell/CoverageReportsQueries';
-import { matchFilterOptions, usePackageCoverageTable } from '../hooks/usePackageCoverageTable';
+import {
+  matchFilterOptions,
+  type PackageCoverageTableState,
+} from '../hooks/usePackageCoverageTable';
 import type { CoverageReportPackage } from 'services/Lightwell/CoverageReportsApi';
 
 const COLUMNS = ['Package', 'Version', 'Ecosystem', 'Match'];
@@ -36,9 +39,10 @@ const MATCH_STATUS_LABEL: Record<
 type PackageCoverageTableProps = {
   uuid: string;
   ecosystems: string[];
+  tableState: PackageCoverageTableState;
 };
 
-const PackageCoverageTable = ({ uuid, ecosystems }: PackageCoverageTableProps) => {
+const PackageCoverageTable = ({ uuid, ecosystems, tableState }: PackageCoverageTableProps) => {
   const useMock = LIGHTWELL_LENS_USE_MOCK;
 
   const {
@@ -50,7 +54,7 @@ const PackageCoverageTable = ({ uuid, ecosystems }: PackageCoverageTableProps) =
     handleFilterChange,
     paginationProps,
     ecosystemFilterOptions,
-  } = usePackageCoverageTable(ecosystems);
+  } = tableState;
 
   const { page, perPage } = paginationProps;
 

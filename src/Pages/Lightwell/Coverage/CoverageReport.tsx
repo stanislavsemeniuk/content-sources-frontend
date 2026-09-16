@@ -18,8 +18,10 @@ import spacing from '@patternfly/react-styles/css/utilities/Spacing/spacing';
 import CoverageSummaryCard from './components/CoverageSummaryCard';
 import EcosystemBreakdownCard from './components/EcosystemBreakdownCard';
 import PackageCoverageTable from './components/PackageCoverageTable';
+import { ExportMenu } from './components/ExportMenu';
 import RemediatedDataWarning from '../RemediatedDataWarning';
 import { useCoverageReport } from './hooks/useCoverageReport';
+import { usePackageCoverageTable } from './hooks/usePackageCoverageTable';
 import Loader from 'components/Loader';
 import LightwellNotFound from '../components/LightwellNotFound';
 
@@ -31,6 +33,10 @@ const CoverageReport = () => {
     () => report?.ecosystem_coverage_summary.map((summary) => summary.ecosystem) ?? [],
     [report],
   );
+
+  // Lifted here so ExportMenu and PackageCoverageTable share one filter/pagination state,
+  // letting the PDF export respect the table's active filters.
+  const tableState = usePackageCoverageTable(ecosystems);
 
   if (isLoading) return <Loader />;
   if (isError) throw error;
@@ -61,14 +67,32 @@ const CoverageReport = () => {
         title={matchAnalysisTitle}
         ouiaId='lightwell-coverage-header'
         actions={
-          <Button
-            variant='secondary'
-            icon={<PlusIcon />}
-            ouiaId='lightwell-new-analysis-button'
-            onClick={startOver}
-          >
-            New analysis
-          </Button>
+          <Flex gap={{ default: 'gapSm' }} flexWrap={{ default: 'nowrap' }}>
+            <FlexItem>
+              <ExportMenu
+                uuid={report.uuid}
+                ecosystems={ecosystems}
+                filters={tableState.debouncedFilters}
+                filename={filename}
+                summary={{
+                  total: report.total,
+                  exact_matches: report.exact_matches,
+                  partial_matches: report.partial_matches,
+                  unmatched: report.unmatched,
+                }}
+              />
+            </FlexItem>
+            <FlexItem>
+              <Button
+                variant='secondary'
+                icon={<PlusIcon />}
+                ouiaId='lightwell-new-analysis-button'
+                onClick={startOver}
+              >
+                New analysis
+              </Button>
+            </FlexItem>
+          </Flex>
         }
       />
       {/* plXs matches the mXs margin LightwellPageHeader applies to its inner title flex, keeping content left-aligned */}
@@ -92,7 +116,11 @@ const CoverageReport = () => {
                     <RemediatedDataWarning />
                   </FlexItem>
                   <FlexItem>
-                    <PackageCoverageTable uuid={report.uuid} ecosystems={ecosystems} />
+                    <PackageCoverageTable
+                      uuid={report.uuid}
+                      ecosystems={ecosystems}
+                      tableState={tableState}
+                    />
                   </FlexItem>
                 </Flex>
               </CardBody>

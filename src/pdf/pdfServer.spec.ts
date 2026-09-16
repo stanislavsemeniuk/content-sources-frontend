@@ -1,5 +1,6 @@
 jest.mock('./pdfRenderer', () => ({
   generateBeaconPdf: jest.fn(),
+  generateCoveragePdf: jest.fn(),
   closeBrowser: jest.fn(),
   getBrowser: jest.fn(),
 }));
@@ -14,6 +15,7 @@ jest.mock('./pdfConfig', () => ({
   PDF_SERVER_ORIGIN: 'http://127.0.0.1:3001',
   PDF_STYLES_BASE_URL: 'http://127.0.0.1:3001/pdf/styles',
   MAX_VULNERABILITIES: 5000,
+  MAX_COVERAGE_PACKAGES: 10000,
   HANDLER_TIMEOUT_MS: 60000,
   pendingRenders: new Map(),
 }));
@@ -26,10 +28,13 @@ jest.mock('./pdfMetrics', () => ({
 }));
 
 import type { Request, Response } from 'express';
-import { handleBeaconPdf, handleHealthz } from './pdfServer';
-import { generateBeaconPdf, getBrowser } from './pdfRenderer';
+import { handleBeaconPdf, handleCoveragePdf, handleHealthz } from './pdfServer';
+import { generateBeaconPdf, generateCoveragePdf, getBrowser } from './pdfRenderer';
 
 const mockedGeneratePdf = generateBeaconPdf as jest.MockedFunction<typeof generateBeaconPdf>;
+const mockedGenerateCoveragePdf = generateCoveragePdf as jest.MockedFunction<
+  typeof generateCoveragePdf
+>;
 const mockedGetBrowser = getBrowser as jest.MockedFunction<typeof getBrowser>;
 
 function mockReqRes(body: Record<string, unknown>) {
@@ -71,7 +76,14 @@ const MOCK_DATA = {
 
 beforeEach(() => {
   mockedGeneratePdf.mockReset();
+  mockedGenerateCoveragePdf.mockReset();
 });
+
+const COVERAGE_PACKAGES = [
+  { name: 'spring-web', version: '6.1.5', ecosystem: 'Java', covered: true, match_status: 'exact' },
+];
+
+const COVERAGE_SUMMARY = { total: 100, exact_matches: 60, partial_matches: 15, unmatched: 25 };
 
 describe('handleBeaconPdf', () => {
   it('returns a PDF buffer when given valid input', async () => {
@@ -183,6 +195,81 @@ describe('handleBeaconPdf', () => {
     });
 
     await handleBeaconPdf(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'PDF generation failed',
+      message: 'Puppeteer crashed',
+    });
+  });
+});
+
+describe('handleCoveragePdf', () => {
+  it('returns a PDF buffer when given valid input', async () => {
+    const fakePdf = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    mockedGenerateCoveragePdf.mockResolvedValue(fakePdf);
+
+    const { req, res } = mockReqRes({
+      filename: 'sbom.json',
+      summary: COVERAGE_SUMMARY,
+      data: { packages: COVERAGE_PACKAGES },
+    });
+
+    await handleCoveragePdf(req, res);
+
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'Content-Disposition',
+      'attachment; filename="lightwell-coverage-report.pdf"',
+    );
+    expect(res.send).toHaveBeenCalledTimes(1);
+    expect(mockedGenerateCoveragePdf).toHaveBeenCalledWith(
+      { packages: COVERAGE_PACKAGES },
+      expect.objectContaining({
+        filename: 'sbom.json',
+        summary: COVERAGE_SUMMARY,
+        includeSummary: true,
+        generatedAt: expect.any(String),
+      }),
+    );
+  });
+
+  it('returns 400 when packages are missing', async () => {
+    const { req, res } = mockReqRes({ filename: 'sbom.json', summary: COVERAGE_SUMMARY });
+
+    await handleCoveragePdf(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'data with packages is required' });
+    expect(mockedGenerateCoveragePdf).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when packages exceed the maximum', async () => {
+    const oversized = Array.from({ length: 10001 }, (_, i) => ({
+      name: `pkg-${i}`,
+      version: '1.0.0',
+      ecosystem: 'npm',
+      covered: false,
+      match_status: 'none',
+    }));
+
+    const { req, res } = mockReqRes({ data: { packages: oversized } });
+
+    await handleCoveragePdf(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Too many packages (10001). Maximum is 10000.',
+    });
+    expect(mockedGenerateCoveragePdf).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when PDF generation throws', async () => {
+    mockedGenerateCoveragePdf.mockRejectedValue(new Error('Puppeteer crashed'));
+
+    const { req, res } = mockReqRes({ data: { packages: COVERAGE_PACKAGES } });
+
+    await handleCoveragePdf(req, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({

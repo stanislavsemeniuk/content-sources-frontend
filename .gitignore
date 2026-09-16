@@ -25,6 +25,7 @@ yarn-error.log*
 
 .DS_Store
 coverage
+!/src/Pages/Lightwell/Coverage/
 coverage-e2e
 .nyc_output
 .coverage-certs

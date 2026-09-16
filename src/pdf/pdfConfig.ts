@@ -10,6 +10,9 @@ export const MAX_CONCURRENT_RENDERS = parseInt(process.env.PDF_MAX_CONCURRENT ||
 /** Maximum number of vulnerabilities allowed in a single PDF export. */
 export const MAX_VULNERABILITIES = 5000;
 
+/** Maximum number of coverage packages allowed in a single PDF export. */
+export const MAX_COVERAGE_PACKAGES = 10_000;
+
 /** Timeout for individual Puppeteer operations (page.goto, page.pdf) in ms. */
 export const RENDER_TIMEOUT_MS = 30_000;
 
